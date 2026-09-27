@@ -162,4 +162,36 @@ describe("IntentDetailPage", () => {
 
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
+
+  it("renders the lifecycle timeline and a collapsible raw-data inspector", () => {
+    useIntentMock.mockReturnValue({
+      intent: { ...detail, status: "filled", filledAt: "2026-01-01T00:02:00Z" },
+      isLoading: false,
+      error: undefined,
+    });
+    render(<IntentDetailPage params={{ id: "intent-1" }} />);
+
+    const timeline = screen.getByRole("list", { name: "Intent timeline" });
+    expect(timeline).toHaveTextContent("Created");
+    expect(timeline).toHaveTextContent("Filled");
+    expect(screen.getByText("Raw data")).toBeInTheDocument();
+  });
+
+  it("copies a redacted summary and the validated JSON", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    useIntentMock.mockReturnValue({
+      intent: { ...detail, signedXdr: "SECRETXDR" },
+      isLoading: false,
+      error: undefined,
+    });
+    render(<IntentDetailPage params={{ id: "intent-1" }} />);
+
+    await user.click(screen.getByRole("button", { name: "Copy details" }));
+    await user.click(screen.getByRole("button", { name: "Copy JSON" }));
+    const copied = writeText.mock.calls.map(([text]) => String(text)).join("\n");
+    expect(copied).toContain("Intent: intent-1");
+    expect(copied).toContain('"id": "intent-1"');
+    expect(copied).not.toContain("SECRETXDR");
+  });
 });

@@ -1,6 +1,10 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import freighterApi from "@stellar/freighter-api";
+import { walletAdapter } from "@/lib/wallet";
+import { isValidStellarPublicKey } from "@/lib/stellarAddress";
+import { createSyncedPersist, type Migration } from "@/lib/persist";
+import { useToastStore } from "@/store/toast";
+import { translate, DEFAULT_LOCALE } from "@/lib/i18n";
 
 export type WalletErrorKey =
   "wallet.error.freighterUnavailable" | "wallet.error.connectFailed";
@@ -15,17 +19,28 @@ export type PersistedWalletState = {
 
 export const PERSIST_KEY = "vortex-wallet";
 
+/**
+ * Schema version of the persisted wallet slice. Bump it and append a step to
+ * `WALLET_MIGRATIONS` whenever `PersistedWalletState` changes
+ * (see docs/persisted-state.md).
+ */
+export const WALLET_PERSIST_VERSION = 1;
+
+export const WALLET_MIGRATIONS: readonly Migration[] = [
+  // v0 -> v1: `lastKnownAddress` was added for one-click reconnect.
+  (state) => {
+    const prev = (typeof state === "object" && state !== null ? state : {}) as Record<string, unknown>;
+    const address = typeof prev["address"] === "string" ? prev["address"] : null;
+    return { ...prev, lastKnownAddress: prev["lastKnownAddress"] ?? address };
+  },
+];
+
 /** The network name the app expects, normalised to upper-case for comparison. */
 const EXPECTED_NETWORK = (
   process.env["NEXT_PUBLIC_NETWORK"] ?? "testnet"
 ).toUpperCase();
 
-function isValidPersistedState(state: unknown): state is {
-  address: string | null;
-  lastKnownAddress: string | null;
-  network: string | null;
-  isConnected: boolean;
-} {
+export function isValidPersistedState(state: unknown): state is PersistedWalletState {
   if (typeof state !== "object" || state === null) {
     return false;
   }
@@ -137,7 +152,7 @@ export type WalletState = {
 };
 
 export const useWalletStore = create<WalletState>()(
-  persist(
+  createSyncedPersist(
     (set, get) => ({
       address: null,
       lastKnownAddress: null,
@@ -352,7 +367,17 @@ export const useWalletStore = create<WalletState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => localStorage),
+      version: WALLET_PERSIST_VERSION,
+      migrations: WALLET_MIGRATIONS,
+      validate: isValidPersistedState,
+      // Other tabs' connect/disconnect/account changes go through the same
+      // reconciliation as before: disconnect is trusted, accounts re-verified.
+      onRemoteState: (remote, api) => api.getState().syncFromStorage(remote),
+      onReset: () => {
+        useToastStore
+          .getState()
+          .addToast(translate(DEFAULT_LOCALE, "persist.reset.toast"), "info");
+      },
       partialize: (state): PersistedWalletState => ({
         address: state.address,
         lastKnownAddress: state.lastKnownAddress,

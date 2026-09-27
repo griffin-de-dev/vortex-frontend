@@ -7,6 +7,9 @@ import { Footer } from "@/components/Footer";
 import { IntentStatusBadge } from "@/components/IntentStatusBadge";
 import { ConnectWalletButton } from "@/components/ConnectWalletButton";
 import { EmptyState } from "@/components/EmptyState";
+import { SavedViews } from "@/components/SavedViews";
+import { readChain, readRange, readStatus } from "@/lib/searchQuery";
+import { sanitizeViewParams, type ViewParams } from "@/store/views";
 import { useWalletStore } from "@/store/wallet";
 import { useMyLiveIntents } from "@/hooks/useMyLiveIntents";
 import { useIntent } from "@/hooks/useIntent";
@@ -77,6 +80,25 @@ export default function MyIntentsPage() {
 
   const isFiltered = statusFilter !== "all" || chainFilter !== "all";
 
+  // Saved views (#442): this page keeps filters in local state, so a shared
+  // view URL is read once on mount and validated like any saved view.
+  const viewParams = useMemo(() => {
+    const params: ViewParams = {};
+    if (statusFilter !== "all") params["status"] = statusFilter;
+    if (chainFilter !== "all") params["chain"] = chainFilter;
+    if (dateRange !== "all") params["range"] = dateRange;
+    return params;
+  }, [statusFilter, chainFilter, dateRange]);
+  const applyView = (params: ViewParams) => {
+    setStatusFilter(readStatus(params["status"]));
+    setChainFilter(readChain(params["chain"]));
+    setDateRange(readRange(params["range"]));
+  };
+  useEffect(() => {
+    const shared = Object.fromEntries(new URLSearchParams(window.location.search));
+    if (Object.keys(shared).length > 0) applyView(sanitizeViewParams("my-intents", shared).params);
+  }, []);
+
   const clearFilters = () => {
     setStatusFilter("all");
     setChainFilter("all");
@@ -144,6 +166,8 @@ export default function MyIntentsPage() {
           />
         ) : (
           <>
+            <SavedViews scope="my-intents" currentParams={viewParams} onApply={applyView} />
+
             {/* Filters */}
             <fieldset className="flex flex-wrap items-center gap-2 mb-6 border-0 p-0">
               <legend className="sr-only">Filter intents</legend>

@@ -114,10 +114,3 @@ export function SkeletonDetailCard() {
   );
 }
 
-export function IntentListSkeleton({ count = 4 }: { count?: number }) {
-  return <SkeletonCard rows={count} rowHeight="h-14" />;
-}
-
-export function FeedSkeleton({ count = 3 }: { count?: number }) {
-  return <SkeletonCard rows={count} rowHeight="h-12" />;
-}

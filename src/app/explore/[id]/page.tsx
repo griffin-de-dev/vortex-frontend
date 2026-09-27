@@ -4,17 +4,21 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { Footer } from "@/components/Footer";
-import { CopyButton } from "@/components/CopyButton";
 import { IntentStatusBadge } from "@/components/IntentStatusBadge";
+import { JsonInspector } from "@/components/JsonInspector";
 import { Nav } from "@/components/Nav";
 import { SkeletonDetailCard } from "@/components/Skeleton";
-import { CopyButton } from "@/components/CopyButton";
+import { Timeline } from "@/components/Timeline";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIntent } from "@/hooks/useIntent";
+import { useTranslation } from "@/lib/i18n/I18nProvider";
+import { explorerUrl } from "@/lib/explorerLinks";
+import { buildIntentSummary, intentToJson, redactForExport } from "@/lib/intentExport";
+import { isIntentDetail } from "@/lib/schemas";
+import { sanitizeDisplayText } from "@/lib/textSafety";
+import { buildTimeline } from "@/lib/timeline";
 import { timeAgo } from "@/lib/time";
 import { truncateAddress } from "@/lib/stellarAddress";
-
-const NETWORK = process.env["NEXT_PUBLIC_NETWORK"] ?? "testnet";
 
 // This screen shows 6-and-6 truncation for full-width identifiers.
 const truncate = (value: string) => truncateAddress(value, { prefix: 6, suffix: 6 });
@@ -37,6 +41,13 @@ export default function IntentDetailPage({
   const { intent, isLoading, error } = useIntent(params.id);
   const { copy } = useCopyToClipboard();
   const [txHashCopied, setTxHashCopied] = useState(false);
+  const { t } = useTranslation();
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const timeline = useMemo(() => (intent ? buildTimeline(intent) : []), [intent]);
+  const copyExport = async (text: string) => {
+    const ok = await copy(text);
+    setCopyStatus(ok ? t("intentDetail.copy.done") : t("intentDetail.copy.failed"));
+  };
 
   const isExpired = useMemo(() => {
     if (!intent || intent.status !== "pending" || !intent.deadline)
@@ -101,6 +112,28 @@ export default function IntentDetailPage({
               <IntentStatusBadge status={intent.status} />
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <button
+                type="button"
+                onClick={() => void copyExport(buildIntentSummary(intent))}
+                className="text-xs px-3 py-1.5 rounded-lg border border-vx-border text-vx-muted hover:text-vx-text hover:border-vx-sage/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-vx-sage"
+              >
+                {t("intentDetail.copy.details")}
+              </button>
+              {isIntentDetail(intent) && (
+                <button
+                  type="button"
+                  onClick={() => void copyExport(intentToJson(intent))}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-vx-border text-vx-muted hover:text-vx-text hover:border-vx-sage/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-vx-sage"
+                >
+                  {t("intentDetail.copy.json")}
+                </button>
+              )}
+              <span role="status" aria-live="polite" className="text-xs text-vx-muted">
+                {copyStatus}
+              </span>
+            </div>
+
             {!isSettled && (
               <p
                 role="note"
@@ -136,6 +169,17 @@ export default function IntentDetailPage({
                     value={intent.dstAddress}
                     label="Copy destination address"
                   />
+                  {explorerUrl("account", intent.dstAddress) && (
+                    <a
+                      href={explorerUrl("account", intent.dstAddress) ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-vx-sage hover:underline print:hidden"
+                      aria-label={t("intentDetail.viewAccount")}
+                    >
+                      ↗
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
@@ -159,17 +203,28 @@ export default function IntentDetailPage({
                   >
                     {txHashCopied ? "Copied" : "Copy"}
                   </button>
-                  <a
-                    href={`https://stellar.expert/explorer/${NETWORK}/tx/${intent.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-vx-sage hover:underline print:hidden"
-                  >
-                    View on stellar.expert →
-                  </a>
+                  {explorerUrl("tx", intent.txHash) && (
+                    <a
+                      href={explorerUrl("tx", intent.txHash) ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-vx-sage hover:underline print:hidden"
+                    >
+                      View on stellar.expert →
+                    </a>
+                  )}
                 </div>
               </div>
             )}
+
+            <section className="pt-2 border-t border-vx-line">
+              <h2 className="eyebrow mb-3">{t("timeline.title")}</h2>
+              <Timeline steps={timeline} />
+            </section>
+
+            <section className="pt-2 border-t border-vx-line print:hidden">
+              <JsonInspector value={redactForExport(intent)} />
+            </section>
           </div>
         )}
       </main>
