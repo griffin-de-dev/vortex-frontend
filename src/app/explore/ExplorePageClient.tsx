@@ -33,6 +33,8 @@ import {
 } from "@/lib/searchQuery";
 import type { ViewParams } from "@/store/views";
 import { viewParamsToSearch } from "@/store/views";
+import { useBufferedFeed, useFeedPause } from "@/hooks/useBufferedFeed";
+import { LiveFeedControls } from "@/components/LiveFeedControls";
 
 const ROW_HEIGHT = 96;
 const ROW_GAP = 8;
@@ -41,7 +43,11 @@ const VIEW_KEYS = ["status", "chain", "sort", "range", "q"] as const;
 
 export default function ExplorePageClient() {
   const { t } = useTranslation();
-  const { intents, isLoading, error, isLive } = useLiveIntents();
+  const { intents: liveIntents, isLoading, error, isLive } = useLiveIntents();
+  const pause = useFeedPause("explore");
+  const { visible: intents, pending, overflow, flush } = useBufferedFeed(liveIntents, {
+    isPaused: pause.isPaused,
+  });
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -264,6 +270,17 @@ export default function ExplorePageClient() {
             </button>
           )}
 
+          <LiveFeedControls
+            userPaused={pause.userPaused}
+            onToggle={pause.toggle}
+            pending={pending}
+            overflow={overflow}
+            onFlush={() => {
+              flush();
+              pause.containerRef.current?.focus();
+            }}
+          />
+
           <span className="text-xs text-vx-muted ml-auto" aria-live="polite" aria-atomic="true">
             {filtered.length} intent{filtered.length === 1 ? "" : "s"}
           </span>
@@ -276,6 +293,7 @@ export default function ExplorePageClient() {
         )}
 
         {/* Results */}
+        <div className="focus:outline-none" {...pause.containerProps}>
         {isLoading && intents.length === 0 ? (
           <IntentListSkeleton count={4} />
         ) : error ? (
@@ -300,6 +318,7 @@ export default function ExplorePageClient() {
         ) : (
           <div
             ref={scrollRef}
+            onScroll={(event) => pause.setScrolledAway(event.currentTarget.scrollTop > 0)}
             className="max-h-[70vh] overflow-y-auto"
             role="list"
             aria-label={`${filtered.length} intent${filtered.length === 1 ? "" : "s"}`}
@@ -343,6 +362,7 @@ export default function ExplorePageClient() {
             </div>
           </div>
         )}
+        </div>
       </main>
 
       <Footer />
